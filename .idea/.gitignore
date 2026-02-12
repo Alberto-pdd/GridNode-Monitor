@@ -1,0 +1,32 @@
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+/shelf/
+/workspace.xml
+/mavenHomeManager.xml
+
+# Compilación y Binarios de Java
+*.class
+*.log
+*.jar
+*.war
+*.ear
+/target/
+/build/
+
+# Datos específicos del proyecto (MySmartGrid)
+# Ignoramos los ficheros de consumos para que el repositorio sea ligero
+# Cada usuario debe generarlos con MainGeneraConsumos
+*.bin
+
+# Sistema Operativo
+.DS_Store
+Thumbs.db
+
+# Temporales y Backups
+*.tmp
+*.bak
+*~
