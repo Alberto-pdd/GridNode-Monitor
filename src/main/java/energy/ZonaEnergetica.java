@@ -58,5 +58,4 @@ public class ZonaEnergetica {
     	v.traza(s,color);
     }
 
-
 }

@@ -7,7 +7,7 @@ public class CuentaEnergetica {
         this.balanceKWh = balanceInicialKWh;
     }
 
-    public void anotaConsumo(double kWh) {
+    synchronized public void anotaConsumo(double kWh) {
         this.balanceKWh += kWh;
     }
 

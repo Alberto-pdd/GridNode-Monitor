@@ -21,7 +21,7 @@ public class Bateria {
         return kWh <= nivelActualKWh;
     }
 
-    public double suministra(double kWh) {
+    synchronized public double suministra(double kWh) {
         if (kWh <= 0) return 0.0;
         double suministrado = Math.min(kWh, nivelActualKWh);
         nivelActualKWh -= suministrado;
