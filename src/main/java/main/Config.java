@@ -1,12 +1,13 @@
 package main;
 
 public final class Config {
-    private Config() {}
+    private Config() {
+    }
 
     // --- Configuracion general ---
     public static final int NUM_OPERADORES_POR_ZONA = 3;
     public static final int NUM_ZONAS = 5;
-    
+
     // --- Ventanas ---
     public static final int TAMAÑO_VENTANA = 250;
 
@@ -22,4 +23,11 @@ public final class Config {
 
     // Semilla para generacion reproducible
     public static final long SEED = 12345L;
+
+    // NUEVO: La cantidad a recargar en la bateria tiene que ser un valor
+    // predeterminado
+    public static double CANTIDAD_DE_RECARGA = 150.0;
+
+    // PREGUNTAR SI ESTO ES LO MISMO QUE LA DE ARRIBA
+    public static int NUMERO_OPERARIOS = 5;
 }
