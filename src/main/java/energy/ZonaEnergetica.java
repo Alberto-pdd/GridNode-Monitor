@@ -62,6 +62,14 @@ public class ZonaEnergetica {
         return bateria;
     }
 
+    public BateriaRenovable getBateriaSolar() {
+        return bateriaSolar;
+    }
+
+    public BateriaRenovable getBateriaEolica() {
+        return bateriaEolica;
+    }
+
     public CentroControl getCentroControl() {
         return centroControl;
     }

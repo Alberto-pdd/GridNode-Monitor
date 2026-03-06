@@ -64,16 +64,29 @@ public class RedEnergetica {
         double sum = 0.0;
         for (ZonaEnergetica z : zonas)
             sum += z.getBateria().getNivelActualKWh();
-        return sum;
+
+        return zonas.stream().mapToDouble(
+                zona -> zona.getBateria().getNivelActualKWh() + zona.getBateriaSolar().getNivelActualKWh()
+                        + zona.getBateriaEolica().getNivelActualKWh())
+                .sum();
     }
 
     public void imprimeAuditoria() {
-        System.out.println("\n=== AUDITORIA RED ===");
-        zonas.parallelStream().forEach(z -> {
-            System.out.println("Zona " + z.getIdZona()
-                    + " | consumidos =" + fmt(z.getCuenta().getBalanceKWh()) + " kWh"
-                    + " | bateria=" + fmt(z.getBateria().getNivelActualKWh()) + " kWh");
-        });
+        System.out.println();
+
+        zonas.parallelStream().forEach(
+                z -> {
+                    double nivelRapido = zona.getBateria().getNivelActualKWh();
+                    double nivelSolar = zona.getBateriaSolar().getNivelActualKWh();
+                    double nivelEolico = zona.getBateriaEolica().getNivelActualKWh();
+
+                    System.out.println(
+                            "Zona " + z.getIdZona()
+                                    + " | consumidos =" + fmt(z.getCuenta().getBalanceKWh()) + " kWh"
+                                    + " | bateria=" + fmt(z.getBateria().getNivelActualKWh()) + " kWh"
+                                    + " | solar=" + fmt(z.getBateriaSolar().getNivelActualKWh()) + " kWh"
+                                    + " | eolica=" + fmt(z.getBateriaEolica().getNivelActualKWh()) + " kWh");
+                });
         System.out.println("Consumo total: " + fmt(auditoriaBalanceTotal()) + " kWh");
         System.out.println("Energia disponible total: " + fmt(auditoriaEnergiaDisponibleTotal()) + " kWh");
         System.out.println("=====================\n");
@@ -82,5 +95,4 @@ public class RedEnergetica {
     private String fmt(double x) {
         return String.format(java.util.Locale.ROOT, "%.2f", x);
     }
-
 }

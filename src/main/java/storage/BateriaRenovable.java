@@ -46,6 +46,7 @@ public class BateriaRenovable {
                 e.getStackTrace();
             }
         }
+
         // double suministrado = Math.min(kWh, nivelActualKWh);
         double suministrado = kWh;
         nivelActualKWh -= suministrado;
@@ -53,7 +54,6 @@ public class BateriaRenovable {
         return suministrado;
     }
 
-    
     public void carga(double kWh) {
         lock.lock();
         if (kWh <= 0)
@@ -65,7 +65,7 @@ public class BateriaRenovable {
                 e.getStackTrace();
             }
         }
-        c.signal(); 
+        c.signal();
         nivelActualKWh = Math.min(capacidadMaxKWh, nivelActualKWh + kWh);
         lock.unlock();
     }
@@ -77,25 +77,17 @@ public class BateriaRenovable {
     @Override
     public String toString() {
         return "Bateria{capacidadMaxKWh=" + capacidadMaxKWh + ", nivelActualKWh=" + nivelActualKWh + "}";
-    }    
+    }
 
     public void esperarEnergia(double kwh) {
         lock.lock();
         try {
             while (nivelActualKWh < kwh) {
                 c.await();
-            }    
-        } catch {
-            try {
-                finally {
-                lock.unlock();
             }
-            } catch (Exception e) {
-                // TODO: handle exception
-            }
+        } catch (Exception e) {
+            e.getStackTrace();
         }
-        
-        
+        lock.unlock();
     }
-    
 }
