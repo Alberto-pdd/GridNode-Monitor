@@ -1,8 +1,7 @@
 package operators;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Random;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import energy.Consumo;
 import energy.Demanda;
@@ -10,30 +9,26 @@ import energy.ZonaEnergetica;
 
 public class CentroControl {
     private ZonaEnergetica zona;
-    private List<TrabajoConsumo> colaConsumos = new ArrayList<>();
+    private LinkedBlockingQueue<TrabajoConsumo> colaConsumos = new LinkedBlockingQueue<>();
 
     public CentroControl() {
 
     }
 
-    synchronized public void addTrabajo(Consumo c) {
+    public void addTrabajo(Consumo c) {
         TrabajoConsumo tc = new TrabajoConsumo(c);
-        colaConsumos.add(tc);
-        notifyAll();
+        colaConsumos.offer(tc);
     }
 
-    synchronized public Consumo getTrabajo() {
-        while (colaConsumos.isEmpty()) {
-            try {
-                wait();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
+    public Consumo getTrabajo() {
+        try {
+            TrabajoConsumo tc = colaConsumos.take();
+            tc.setResultado("OK");
+            return tc.getConsumo();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         }
-
-        TrabajoConsumo tc = colaConsumos.remove(0);
-        tc.setResultado("OK");
-        return tc.getConsumo();
     }
 
     public void setZona(ZonaEnergetica zona) {
