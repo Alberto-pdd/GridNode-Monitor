@@ -34,7 +34,6 @@ public class RedEnergetica {
             bateria.setVentana(ventanaZona);
             cc.setZona(zona);
             tmp.add(zona);
-
         }
 
         this.zonas = Collections.unmodifiableList(tmp);
@@ -61,9 +60,10 @@ public class RedEnergetica {
     }
 
     public double auditoriaEnergiaDisponibleTotal() {
-        double sum = 0.0;
-        for (ZonaEnergetica z : zonas)
-            sum += z.getBateria().getNivelActualKWh();
+        // double sum = 0.0;
+
+        // for (ZonaEnergetica z : zonas)
+        // sum += z.getBateria().getNivelActualKWh();
 
         return zonas.stream().mapToDouble(
                 zona -> zona.getBateria().getNivelActualKWh() + zona.getBateriaSolar().getNivelActualKWh()
@@ -72,24 +72,22 @@ public class RedEnergetica {
     }
 
     public void imprimeAuditoria() {
-        System.out.println();
+        System.out.println(
+                "\n------------------------------------------------------- AUDITORIA RED -------------------------------------------------------\n");
 
         zonas.parallelStream().forEach(
                 z -> {
-                    double nivelRapido = zona.getBateria().getNivelActualKWh();
-                    double nivelSolar = zona.getBateriaSolar().getNivelActualKWh();
-                    double nivelEolico = zona.getBateriaEolica().getNivelActualKWh();
-
                     System.out.println(
                             "Zona " + z.getIdZona()
-                                    + " | consumidos =" + fmt(z.getCuenta().getBalanceKWh()) + " kWh"
-                                    + " | bateria=" + fmt(z.getBateria().getNivelActualKWh()) + " kWh"
-                                    + " | solar=" + fmt(z.getBateriaSolar().getNivelActualKWh()) + " kWh"
-                                    + " | eolica=" + fmt(z.getBateriaEolica().getNivelActualKWh()) + " kWh");
+                                    + " -> Consumidos = " + fmt(z.getCuenta().getBalanceKWh()) + " kWh"
+                                    + " | Bateria Rápida = " + fmt(z.getBateria().getNivelActualKWh()) + " kWh"
+                                    + " --- Bateria Solar = " + fmt(z.getBateriaSolar().getNivelActualKWh()) + " kWh"
+                                    + " --- Bateria Eolica = " + fmt(z.getBateriaEolica().getNivelActualKWh())
+                                    + " kWh");
                 });
         System.out.println("Consumo total: " + fmt(auditoriaBalanceTotal()) + " kWh");
         System.out.println("Energia disponible total: " + fmt(auditoriaEnergiaDisponibleTotal()) + " kWh");
-        System.out.println("=====================\n");
+        System.out.println("======================================\n");
     }
 
     private String fmt(double x) {

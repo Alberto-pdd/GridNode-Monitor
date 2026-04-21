@@ -22,7 +22,7 @@ public class CuentaEnergetica {
         this.totalRapido += totalRapido;
         this.totalSolar += solar;
         this.totalEolica += eolica;
-        this.balanceKWh += (totalRapido + totalSolar + totalEolica);
+        this.balanceKWh += (totalRapido + solar + eolica);
 
     }
 

@@ -22,7 +22,7 @@ public class TrabajoConsumo {
         }
     }
 
-    public void setResultado(String resultado) {
+    synchronized public void setResultado(String resultado) {
         fin = true;
         this.resultado = resultado;
         notifyAll();

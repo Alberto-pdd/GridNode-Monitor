@@ -8,6 +8,8 @@ import storage.BateriaRenovable;
 
 import java.awt.Color;
 import java.util.Objects;
+import java.util.concurrent.Semaphore;
+
 import operators.OperarioRed;
 import operators.RobotProductor;
 
@@ -23,6 +25,8 @@ public class ZonaEnergetica {
     private BateriaRenovable bateriaEolica;
     private RobotProductor robotSolar;
     private RobotProductor robotEolica;
+    private Semaphore sOperarioRed = new Semaphore(0);
+    private Semaphore sConsumo = new Semaphore(Config.MAX_CONSUMOS);
 
     public ZonaEnergetica(int idZona, CuentaEnergetica cuenta, Bateria bateria, CentroControl centroControl,
             Ventana _v) {
@@ -40,14 +44,19 @@ public class ZonaEnergetica {
         robotEolica.start();
 
         for (int i = 0; i < Config.NUMERO_OPERARIOS; i++) {
-            OperarioRed opRed = new OperarioRed(centroControl, this);
+            OperarioRed opRed = new OperarioRed(centroControl, this, this.sOperarioRed);
             Thread tOpRed = new Thread(opRed);
             tOpRed.start();
         }
+        sOperarioRed.release(Config.NUM_OPERADORES_POR_ZONA);
 
         OperarioCarga opCarga = new OperarioCarga(this);
         Thread tOpCarga = new Thread(opCarga);
         tOpCarga.start();
+    }
+
+    public Semaphore getSConsumo() {
+        return this.sConsumo;
     }
 
     public int getIdZona() {

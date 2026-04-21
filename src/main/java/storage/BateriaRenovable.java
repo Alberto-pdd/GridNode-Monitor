@@ -36,38 +36,44 @@ public class BateriaRenovable {
 
     public double suministra(double kWh) {
         lock.lock();
-        if (kWh <= 0)
-            return 0.0;
+        try {
+            if (kWh <= 0)
+                return 0.0;
 
-        while (nivelActualKWh == 0) {
-            try {
-                wait();
-            } catch (Exception e) {
-                e.getStackTrace();
+            while (nivelActualKWh < kWh) {
+                try {
+                    c.await();
+                } catch (Exception e) {
+                    e.getStackTrace();
+                }
             }
-        }
 
-        // double suministrado = Math.min(kWh, nivelActualKWh);
-        double suministrado = kWh;
-        nivelActualKWh -= suministrado;
-        lock.unlock();
-        return suministrado;
+            double suministrado = Math.min(kWh, nivelActualKWh);
+            nivelActualKWh -= suministrado;
+            c.signal();
+            return suministrado;
+        } finally {
+            lock.unlock();
+        }
     }
 
     public void carga(double kWh) {
         lock.lock();
-        if (kWh <= 0)
-            return;
-        while ((nivelActualKWh + kWh) > capacidadMaxKWh) {
-            try {
-                c.await();
-            } catch (Exception e) {
-                e.getStackTrace();
+        try {
+            if (kWh <= 0)
+                return;
+            while ((nivelActualKWh + kWh) > capacidadMaxKWh) {
+                try {
+                    c.await();
+                } catch (Exception e) {
+                    e.getStackTrace();
+                }
             }
+            nivelActualKWh = Math.min(capacidadMaxKWh, nivelActualKWh + kWh);
+            c.signal();
+        } finally {
+            lock.unlock();
         }
-        c.signal();
-        nivelActualKWh = Math.min(capacidadMaxKWh, nivelActualKWh + kWh);
-        lock.unlock();
     }
 
     public void setVentana(Ventana _v) {
@@ -87,7 +93,8 @@ public class BateriaRenovable {
             }
         } catch (Exception e) {
             e.getStackTrace();
+        } finally {
+            lock.unlock();
         }
-        lock.unlock();
     }
 }

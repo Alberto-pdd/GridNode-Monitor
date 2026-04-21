@@ -1,5 +1,7 @@
 package operators;
 
+import java.util.concurrent.Semaphore;
+
 import energy.Consumo;
 import energy.Demanda;
 import energy.ZonaEnergetica;
@@ -10,11 +12,13 @@ public class OperarioRed implements Runnable {
     Consumo consumo;
     Double total;
     ZonaEnergetica zonaEnergetica;
+    Semaphore semaphore;
 
-    public OperarioRed(CentroControl centroControl, ZonaEnergetica zona) {
+    public OperarioRed(CentroControl centroControl, ZonaEnergetica zona, Semaphore semaphore) {
         this.centroControl = centroControl;
         this.zonaEnergetica = zona;
         this.total = 0.0;
+        this.semaphore = semaphore;
     }
 
     @Override
@@ -23,7 +27,15 @@ public class OperarioRed implements Runnable {
             double cSolar = 0;
             double cEolico = 0;
             double cRapido = 0;
+
             consumo = centroControl.getTrabajo();
+
+            try {
+                zonaEnergetica.getSConsumo().acquire();
+            } catch (InterruptedException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
 
             // SUMAR CONSUMOS
             for (Demanda demanda : consumo.getDemandas()) {
@@ -31,10 +43,10 @@ public class OperarioRed implements Runnable {
                     cSolar = cSolar + demanda.getKWh();
                 }
                 if (demanda.getIdTipo().equals("EOLICA")) {
-                    cSolar = cRapido + demanda.getKWh();
+                    cEolico = cEolico + demanda.getKWh();
                 }
-                if (demanda.getIdTipo().equals("RAPIDO")) {
-                    cSolar = cEolico + demanda.getKWh();
+                if (demanda.getIdTipo().equals("RAPIDA")) {
+                    cRapido = cRapido + demanda.getKWh();
                 }
             }
 
@@ -78,6 +90,8 @@ public class OperarioRed implements Runnable {
             System.out.println(consumo.getIdConsumo() + "Tramitado OK: Solar: " + cSolar);
             System.out.println(consumo.getIdConsumo() + "Tramitado OK: Eolica: " + cEolico);
             System.out.println(consumo.getIdConsumo() + "Tramitado OK: Rapido: " + cRapido);
+
+            zonaEnergetica.getSConsumo().release();
         }
     }
 }

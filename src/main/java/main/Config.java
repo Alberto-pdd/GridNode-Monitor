@@ -24,10 +24,15 @@ public final class Config {
     // Semilla para generacion reproducible
     public static final long SEED = 12345L;
 
-    // NUEVO: La cantidad a recargar en la bateria tiene que ser un valor
-    // predeterminado
+    //La cantidad a recargar en la bateria tiene que ser un valor predeterminado
     public static double CANTIDAD_DE_RECARGA = 150.0;
 
-    // PREGUNTAR SI ESTO ES LO MISMO QUE LA DE ARRIBA
+    // PREGUNTAR SI ESTO ES LO MISMO QUE LA DE **MAX_CONSUMOS**
     public static int NUMERO_OPERARIOS = 5;
+
+    // MAXIMO OPERARIOS
+    public static int MAX_CONSUMOS = 5;
+
+    // Modo de ejecucion: 0 = tradicional, 1 = observables, 2 = executor
+    public static int MODO_EJECUCION = 2;
 }

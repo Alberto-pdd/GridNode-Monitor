@@ -4,6 +4,15 @@
   <artifactId>MySmartGrid</artifactId>
   <version>0.0.1-SNAPSHOT</version>
   <name>MySmartGrid-v0</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.reactivex.rxjava2</groupId>
+      <artifactId>rxjava</artifactId>
+      <version>2.2.21</version>
+    </dependency>
+  </dependencies>
+
   <build>
     <plugins>
       <plugin>

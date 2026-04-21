@@ -41,9 +41,11 @@ public class Bateria {
         }
 
         // double suministrado = Math.min(kWh, nivelActualKWh);
-        double suministrado = kWh;
+        double suministrado = Math.min(kWh, nivelActualKWh);
         nivelActualKWh -= suministrado;
-        notifyAll();
+        if (nivelActualKWh == 0) {
+            notifyAll();
+        }
         return suministrado;
     }
 
