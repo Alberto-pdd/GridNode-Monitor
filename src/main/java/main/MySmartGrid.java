@@ -1,5 +1,6 @@
 package main;
 
+import operators.ObtenerConsumoMaximo;
 import energy.Consumo;
 import energy.RedEnergetica;
 
@@ -13,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public class MySmartGrid {
@@ -73,17 +75,6 @@ public class MySmartGrid {
                         throw new RuntimeException(e);
                     }
                 }
-                // BLOQUE 20 KWH
-                Observable<Consumo> consumoObservable = Observable.fromIterable(consumos)
-                                .subscribeOn(Schedulers.computation());
-
-                        consumoObservable.reduce(0.0, (acc, c) -> acc + c.getTotalKWh())
-                                .subscribe(total -> System.out.println("[Thread " + Thread.currentThread().getName() + "] Suma total: " + total + " kWh"));
-
-                        consumoObservable.filter(c -> c.getTotalKWh() > 20.0)
-                                .subscribe(c -> System.out.println("[Thread " + Thread.currentThread().getName() + "] Consumo > 20kWh: " + c.getIdConsumo() + " = " + c.getTotalKWh() + " kWh"));
-                break;
-                // BLOQUE 20 KWH
             case 2:
                 int nucleos = Runtime.getRuntime().availableProcessors();
                 System.out.println("Modo Executor con " + nucleos + " nucleos disponibles");
@@ -98,6 +89,7 @@ public class MySmartGrid {
                 }
 
                 executor.shutdown();
+                
                 try {
                     executor.awaitTermination(1, TimeUnit.HOURS);
                 } catch (InterruptedException e) {
@@ -106,8 +98,35 @@ public class MySmartGrid {
                 break;
         }
 
-        red.imprimeAuditoria();
+        // BLOQUE 20 KWH
+        Observable<Consumo> consumoObservable = Observable.fromIterable(consumos)
+                .subscribeOn(Schedulers.computation());
 
+        consumoObservable.reduce(0.0, (acc, c) -> acc + c.getTotalKWh())
+                .subscribe(total -> System.out
+                        .println("[Thread " + Thread.currentThread().getName() + "] Suma total: " + total + " kWh"));
+
+        consumoObservable.filter(c -> c.getTotalKWh() > 20.0)
+                .subscribe(c -> System.out.println("[Thread " + Thread.currentThread().getName() + "] Consumo > 20kWh: "
+                        + c.getIdConsumo() + " = " + c.getTotalKWh() + " kWh"));
+        // BLOQUE 20 KWH
+
+        // Obtener consumo máximo usando Callable
+        ExecutorService maxExecutor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Consumo> futureMax = maxExecutor.submit(new ObtenerConsumoMaximo(consumos));
+            Consumo max = futureMax.get();
+            if (max != null) {
+                System.out.println("Consumo mas alto detectado (Callable): ID=" + max.getIdConsumo() + 
+                                   ", Cantidad=" + max.getTotalKWh() + " kWh");
+            }
+        } catch (Exception e) {
+            System.err.println("Error al obtener el consumo maximo: " + e.getMessage());
+        } finally {
+            maxExecutor.shutdown();
+        }
+
+        red.imprimeAuditoria();
 
         System.out.println("Consumo de Kwh < 5");
         consumos.parallelStream().filter(c -> c.getTotalKWh() < 5.0).map(Consumo::getIdConsumo)
