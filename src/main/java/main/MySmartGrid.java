@@ -14,6 +14,9 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.RecursiveTask;
+import java.util.stream.Collectors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -126,6 +129,12 @@ public class MySmartGrid {
             maxExecutor.shutdown();
         }
 
+        // BLOQUE FORKJOIN (Filtro > 20 kWh) - Apartado D
+        ForkJoinPool poolFJ = new ForkJoinPool();
+        List<Consumo> filtradosFJ = poolFJ.invoke(new TareaFiltrado(consumos));
+        System.out.println("--- Consumos > 20kWh encontrados con ForkJoin (" + filtradosFJ.size() + ") ---");
+        filtradosFJ.forEach(c -> System.out.println("ID: " + c.getIdConsumo() + " | " + c.getTotalKWh() + " kWh"));
+
         red.imprimeAuditoria();
 
         System.out.println("Consumo de Kwh < 5");
@@ -151,6 +160,39 @@ public class MySmartGrid {
             System.out.println("Direccion Encontrada");
         } else {
             System.out.println("Direccion NO encontrada");
+        }
+    }
+
+    /**
+     * Tarea ForkJoin recursiva para filtrar consumos pesados (>20kWh).
+     * El caso trivial ocurre cuando la lista tiene menos de 10 elementos.
+     */
+    static class TareaFiltrado extends RecursiveTask<List<Consumo>> {
+        private final List<Consumo> lista;
+
+        TareaFiltrado(List<Consumo> lista) {
+            this.lista = lista;
+        }
+
+        @Override
+        protected List<Consumo> compute() {
+            if (lista.size() < 10) {
+                // Caso trivial: Menos de 10 consumos
+                return lista.stream()
+                        .filter(c -> c.getTotalKWh() > 20.0)
+                        .collect(Collectors.toList());
+            }
+
+            // Caso recursivo: Dividir y vencer
+            int mid = lista.size() / 2;
+            TareaFiltrado t1 = new TareaFiltrado(lista.subList(0, mid));
+            TareaFiltrado t2 = new TareaFiltrado(lista.subList(mid, lista.size()));
+
+            invokeAll(t1, t2);
+
+            List<Consumo> result = new ArrayList<>(t1.join());
+            result.addAll(t2.join());
+            return result;
         }
     }
 }
