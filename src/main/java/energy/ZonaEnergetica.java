@@ -8,6 +8,7 @@ import storage.BateriaRenovable;
 
 import java.awt.Color;
 import java.util.Objects;
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
 
 import operators.OperarioRed;
@@ -25,7 +26,8 @@ public class ZonaEnergetica {
     private BateriaRenovable bateriaEolica;
     private RobotProductor robotSolar;
     private RobotProductor robotEolica;
-    private Semaphore sOperarioRed = new Semaphore(0);
+    private Semaphore sOperarioRed;
+    private CyclicBarrier bOperarioRed;
     private Semaphore sConsumo = new Semaphore(Config.MAX_CONSUMOS);
 
     public ZonaEnergetica(int idZona, CuentaEnergetica cuenta, Bateria bateria, CentroControl centroControl,
@@ -43,12 +45,18 @@ public class ZonaEnergetica {
         robotSolar.start();
         robotEolica.start();
 
+        // Inicialización de sincronización de operarios
+        if (Config.SYNC_MODE == 0) {
+            sOperarioRed = new Semaphore(Config.NUMERO_OPERARIOS);
+        } else {
+            bOperarioRed = new CyclicBarrier(Config.NUMERO_OPERARIOS);
+        }
+
         for (int i = 0; i < Config.NUMERO_OPERARIOS; i++) {
-            OperarioRed opRed = new OperarioRed(centroControl, this, this.sOperarioRed);
+            OperarioRed opRed = new OperarioRed(centroControl, this, sOperarioRed, bOperarioRed);
             Thread tOpRed = new Thread(opRed);
             tOpRed.start();
         }
-        sOperarioRed.release(Config.NUM_OPERADORES_POR_ZONA);
 
         OperarioCarga opCarga = new OperarioCarga(this);
         Thread tOpCarga = new Thread(opCarga);

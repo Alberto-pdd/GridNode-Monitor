@@ -27,8 +27,9 @@ public final class Config {
     //La cantidad a recargar en la bateria tiene que ser un valor predeterminado
     public static double CANTIDAD_DE_RECARGA = 150.0;
 
-    // PREGUNTAR SI ESTO ES LO MISMO QUE LA DE **MAX_CONSUMOS**
-    public static int NUMERO_OPERARIOS = 5;
+    // --- Sincronización de Operarios ---
+    public static final int NUMERO_OPERARIOS = 3;
+    public static final int SYNC_MODE = 1; // 0 = SEMAPHORE, 1 = CYCLIC_BARRIER
 
     // MAXIMO OPERARIOS
     public static int MAX_CONSUMOS = 5;

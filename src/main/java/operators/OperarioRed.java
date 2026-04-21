@@ -1,10 +1,12 @@
 package operators;
 
+import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
 
 import energy.Consumo;
 import energy.Demanda;
 import energy.ZonaEnergetica;
+import main.Config;
 
 public class OperarioRed implements Runnable {
 
@@ -13,17 +15,31 @@ public class OperarioRed implements Runnable {
     Double total;
     ZonaEnergetica zonaEnergetica;
     Semaphore semaphore;
+    CyclicBarrier barrier;
 
-    public OperarioRed(CentroControl centroControl, ZonaEnergetica zona, Semaphore semaphore) {
+    public OperarioRed(CentroControl centroControl, ZonaEnergetica zona, Semaphore semaphore, CyclicBarrier barrier) {
         this.centroControl = centroControl;
         this.zonaEnergetica = zona;
         this.total = 0.0;
         this.semaphore = semaphore;
+        this.barrier = barrier;
     }
 
     @Override
     public void run() {
         while (true) {
+            // Sincronización inicial/ciclo según configuración
+            try {
+                if (Config.SYNC_MODE == 0 && semaphore != null) {
+                    semaphore.acquire();
+                } else if (Config.SYNC_MODE == 1 && barrier != null) {
+                    barrier.await();
+                }
+            } catch (Exception e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+
             double cSolar = 0;
             double cEolico = 0;
             double cRapido = 0;
@@ -92,6 +108,11 @@ public class OperarioRed implements Runnable {
             System.out.println(consumo.getIdConsumo() + "Tramitado OK: Rapido: " + cRapido);
 
             zonaEnergetica.getSConsumo().release();
+            
+            // Si usamos semáforo, liberamos para permitir el siguiente ciclo del operario
+            if (Config.SYNC_MODE == 0 && semaphore != null) {
+                semaphore.release();
+            }
         }
     }
 }
