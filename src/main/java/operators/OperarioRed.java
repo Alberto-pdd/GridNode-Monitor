@@ -1,5 +1,6 @@
 package operators;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
 
@@ -16,13 +17,16 @@ public class OperarioRed implements Runnable {
     ZonaEnergetica zonaEnergetica;
     Semaphore semaphore;
     CyclicBarrier barrier;
+    CountDownLatch latch;
+    private boolean primero = true;
 
-    public OperarioRed(CentroControl centroControl, ZonaEnergetica zona, Semaphore semaphore, CyclicBarrier barrier) {
+    public OperarioRed(CentroControl centroControl, ZonaEnergetica zona, Semaphore semaphore, CyclicBarrier barrier, CountDownLatch latch) {
         this.centroControl = centroControl;
         this.zonaEnergetica = zona;
         this.total = 0.0;
         this.semaphore = semaphore;
         this.barrier = barrier;
+        this.latch = latch;
     }
 
     @Override
@@ -34,6 +38,12 @@ public class OperarioRed implements Runnable {
                     semaphore.acquire();
                 } else if (Config.SYNC_MODE == 1 && barrier != null) {
                     barrier.await();
+                }
+
+                // Notificamos al latch solo en la primera iteración
+                if (primero && latch != null) {
+                    latch.countDown();
+                    primero = false;
                 }
             } catch (Exception e) {
                 Thread.currentThread().interrupt();

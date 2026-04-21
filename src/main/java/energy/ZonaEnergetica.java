@@ -8,6 +8,7 @@ import storage.BateriaRenovable;
 
 import java.awt.Color;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
 
@@ -52,13 +53,15 @@ public class ZonaEnergetica {
             bOperarioRed = new CyclicBarrier(Config.NUMERO_OPERARIOS);
         }
 
+        CountDownLatch latchOperarios = new CountDownLatch(Config.NUMERO_OPERARIOS);
+
         for (int i = 0; i < Config.NUMERO_OPERARIOS; i++) {
-            OperarioRed opRed = new OperarioRed(centroControl, this, sOperarioRed, bOperarioRed);
+            OperarioRed opRed = new OperarioRed(centroControl, this, sOperarioRed, bOperarioRed, latchOperarios);
             Thread tOpRed = new Thread(opRed);
             tOpRed.start();
         }
 
-        OperarioCarga opCarga = new OperarioCarga(this);
+        OperarioCarga opCarga = new OperarioCarga(this, latchOperarios);
         Thread tOpCarga = new Thread(opCarga);
         tOpCarga.start();
     }
