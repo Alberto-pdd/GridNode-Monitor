@@ -12,8 +12,8 @@ public final class Config {
     public static final int TAMAÑO_VENTANA = 250;
 
     // Baterias (kWh)
-    public static final double CAPACIDAD_BATERIA = 200.0;
-    public static final double NIVEL_INICIAL_BATERIA = 120.0;
+    public static final double CAPACIDAD_BATERIA = 400.0;
+    public static final double NIVEL_INICIAL_BATERIA = 100.0;
 
     // Ficheros
     public static final String FICHERO_CONSUMOS = "consumos5.bin";
@@ -32,7 +32,7 @@ public final class Config {
     public static final int SYNC_MODE = 1; // 0 = SEMAPHORE, 1 = CYCLIC_BARRIER
 
     // MAXIMO OPERARIOS
-    public static int MAX_CONSUMOS = 5;
+    public static int MAX_CONSUMOS = 1;
 
     // Modo de ejecucion: 0 = tradicional, 1 = observables, 2 = executor
     public static int MODO_EJECUCION = 2;

@@ -53,7 +53,7 @@ public class Bateria {
         if (kWh <= 0)
             return;
 
-        while (nivelActualKWh > 0) {
+        while (nivelActualKWh >= capacidadMaxKWh) {
             try {
                 wait();
             } catch (Exception e) {

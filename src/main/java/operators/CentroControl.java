@@ -15,9 +15,29 @@ public class CentroControl {
 
     }
 
-    public void addTrabajo(Consumo c) {
+    public String addTrabajo(Consumo c) {
+        // Calcular el consumo para la auditoría local inmediata
+        double cRapida = 0.0;
+        double cSolar = 0.0;
+        double cEolica = 0.0;
+
+        for (Demanda demanda : c.getDemandas()) {
+            if (demanda.getIdTipo().equals("RAPIDA")) {
+                cRapida += demanda.getKWh();
+            } else if (demanda.getIdTipo().equals("SOLAR")) {
+                cSolar += demanda.getKWh();
+            } else if (demanda.getIdTipo().equals("EOLICA")) {
+                cEolica += demanda.getKWh();
+            }
+        }
+
+        // Anotar en la cuenta energética ANTES de encolar
+        // Esto garantiza que la auditoría local sea correcta cuando el main haga los join()
+        zona.getCuenta().anotaConsumoDet(cRapida, cSolar, cEolica);
+
         TrabajoConsumo tc = new TrabajoConsumo(c);
         colaConsumos.offer(tc);
+        return "OK: Enviado a operario";
     }
 
     public Consumo getTrabajo() {

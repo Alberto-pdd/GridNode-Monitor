@@ -7,38 +7,74 @@ import storage.Bateria;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 
+import grpc.MonitorizacionGrpc;
 import main.Config;
 
+/**
+ * Clase que representa la red energética global.
+ * Gestiona el conjunto de zonas, los centros de control y la sincronización
+ * de los informes finales de auditoría y gRPC.
+ */
 public class RedEnergetica {
     private final List<ZonaEnergetica> zonas;
     private final List<CentroControl> centros;
-    ZonaEnergetica zona = null;
+    private final MonitorizacionGrpc.MonitorizacionBlockingStub stub;
+    
+    // Latches para controlar el flujo de impresión en consola
+    private final CountDownLatch latchFin;
+    private final CountDownLatch latchGrpc;
+    
+    // Lista segura para hilos que almacena las respuestas del servidor gRPC
+    private final List<String> respuestasGrpc = new CopyOnWriteArrayList<>();
 
-    public RedEnergetica(int numZonas, double capacidadBateria, double nivelInicialBateria) {
-        if (numZonas <= 0)
+    public RedEnergetica(int numZonas, double capacidadBateria, double nivelInicialBateria, MonitorizacionGrpc.MonitorizacionBlockingStub stub) {
+        if (numZonas <= 0) {
             throw new IllegalArgumentException("numZonas debe ser > 0");
-
-        List<ZonaEnergetica> tmp = new ArrayList<>(numZonas);
-        List<CentroControl> ccs = new ArrayList<>(numZonas);
-        Bateria bateria = null;
-
-        for (int i = 0; i < numZonas; i++) {
-            CentroControl cc = new CentroControl();
-            ccs.add(cc);
-            CuentaEnergetica cuenta = new CuentaEnergetica(0.0);
-            bateria = new Bateria(capacidadBateria, nivelInicialBateria);
-            Ventana ventanaZona = new Ventana(i * Config.TAMAÑO_VENTANA, 1, Config.TAMAÑO_VENTANA,
-                    Config.TAMAÑO_VENTANA, "Zona " + i);
-            zona = new ZonaEnergetica(i, cuenta, bateria, cc, ventanaZona);
-            bateria.setVentana(ventanaZona);
-            cc.setZona(zona);
-            tmp.add(zona);
         }
 
-        this.zonas = Collections.unmodifiableList(tmp);
-        this.centros = Collections.unmodifiableList(ccs);
+        this.stub = stub;
+        // Inicializamos los latches con el número total de consumos esperados
+        this.latchFin = new CountDownLatch(Config.NUM_CONSUMOS_A_GENERAR);
+        this.latchGrpc = new CountDownLatch(Config.NUM_CONSUMOS_A_GENERAR);
+        
+        List<ZonaEnergetica> tmpZonas = new ArrayList<>(numZonas);
+        List<CentroControl> tmpCentros = new ArrayList<>(numZonas);
+
+        // Modularizamos la creación de cada zona energética
+        for (int i = 0; i < numZonas; i++) {
+            inicializarComponentesZona(i, capacidadBateria, nivelInicialBateria, tmpZonas, tmpCentros);
+        }
+
+        this.zonas = Collections.unmodifiableList(tmpZonas);
+        this.centros = Collections.unmodifiableList(tmpCentros);
     }
+
+    /**
+     * Crea e interconecta los componentes de una zona individual.
+     */
+    private void inicializarComponentesZona(int id, double capacidad, double nivel, 
+                                          List<ZonaEnergetica> listaZonas, List<CentroControl> listaCentros) {
+        
+        CentroControl cc = new CentroControl();
+        CuentaEnergetica cuenta = new CuentaEnergetica(0.0);
+        Bateria bateria = new Bateria(capacidad, nivel);
+        
+        // Configuración de la interfaz visual de la zona
+        Ventana ventanaZona = new Ventana(id * Config.TAMAÑO_VENTANA, 1, Config.TAMAÑO_VENTANA,
+                Config.TAMAÑO_VENTANA, "Zona " + id);
+        bateria.setVentana(ventanaZona);
+
+        ZonaEnergetica zona = new ZonaEnergetica(id, cuenta, bateria, cc, ventanaZona, stub, latchFin, latchGrpc, this);
+        cc.setZona(zona);
+
+        listaZonas.add(zona);
+        listaCentros.add(cc);
+    }
+
+    // --- MÉTODOS DE ACCESO ---
 
     public List<ZonaEnergetica> getZonas() {
         return zonas;
@@ -52,44 +88,80 @@ public class RedEnergetica {
         return centros.get(idZona);
     }
 
+    // --- MÉTODOS DE AUDITORÍA Y CÁLCULO ---
+
     public double auditoriaBalanceTotal() {
         double sum = 0.0;
-        for (ZonaEnergetica z : zonas)
+        for (ZonaEnergetica z : zonas) {
             sum += z.getCuenta().getBalanceKWh();
+        }
         return sum;
     }
 
     public double auditoriaEnergiaDisponibleTotal() {
-        // double sum = 0.0;
-
-        // for (ZonaEnergetica z : zonas)
-        // sum += z.getBateria().getNivelActualKWh();
-
         return zonas.stream().mapToDouble(
-                zona -> zona.getBateria().getNivelActualKWh() + zona.getBateriaSolar().getNivelActualKWh()
-                        + zona.getBateriaEolica().getNivelActualKWh())
+                z -> z.getBateria().getNivelActualKWh() + 
+                     z.getBateriaSolar().getNivelActualKWh() + 
+                     z.getBateriaEolica().getNivelActualKWh())
                 .sum();
     }
 
-    public void imprimeAuditoria() {
-        System.out.println(
-                "\n------------------------------------------------------- AUDITORIA RED -------------------------------------------------------\n");
+    // --- GESTIÓN DE SINCRONIZACIÓN Y RESPUESTAS ---
 
-        zonas.parallelStream().forEach(
-                z -> {
-                    System.out.println(
-                            "Zona " + z.getIdZona()
-                                    + " -> Consumidos = " + fmt(z.getCuenta().getBalanceKWh()) + " kWh"
-                                    + " | Bateria Rápida = " + fmt(z.getBateria().getNivelActualKWh()) + " kWh"
-                                    + " --- Bateria Solar = " + fmt(z.getBateriaSolar().getNivelActualKWh()) + " kWh"
-                                    + " --- Bateria Eolica = " + fmt(z.getBateriaEolica().getNivelActualKWh())
-                                    + " kWh");
-                });
+    public void guardarRespuestaGrpc(String msg) {
+        respuestasGrpc.add(msg);
+    }
+
+    public void esperarTrabajosLocales() {
+        try {
+            latchFin.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    public void esperarGrpc() {
+        try {
+            latchGrpc.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    public void imprimirRespuestasGrpc() {
+        System.out.println("");
+        for (String msg : respuestasGrpc) {
+            System.out.println(msg);
+        }
+    }
+
+    /**
+     * Imprime el informe detallado de la red.
+     * Bloquea la ejecución hasta que todos los trámites locales hayan finalizado.
+     */
+    public void imprimeAuditoria() {
+        esperarTrabajosLocales();
+
+        System.out.println("\n------------------------------------------------------- AUDITORIA RED -------------------------------------------------------\n");
+
+        // Usamos parallelStream para agilizar el cálculo en redes con muchas zonas
+        zonas.parallelStream().forEach(z -> {
+            String info = "Zona " + z.getIdZona() + 
+                          " -> Consumidos = " + fmt(z.getCuenta().getBalanceKWh()) + " kWh" +
+                          " | Bateria Rápida = " + fmt(z.getBateria().getNivelActualKWh()) + " kWh" +
+                          " --- Bateria Solar = " + fmt(z.getBateriaSolar().getNivelActualKWh()) + " kWh" +
+                          " --- Bateria Eolica = " + fmt(z.getBateriaEolica().getNivelActualKWh()) + " kWh";
+            System.out.println(info);
+        });
+
         System.out.println("Consumo total: " + fmt(auditoriaBalanceTotal()) + " kWh");
         System.out.println("Energia disponible total: " + fmt(auditoriaEnergiaDisponibleTotal()) + " kWh");
         System.out.println("======================================\n");
     }
 
+    /**
+     * Formateador auxiliar para mantener la precisión de los decimales en el informe.
+     */
     private String fmt(double x) {
         return String.format(java.util.Locale.ROOT, "%.2f", x);
     }

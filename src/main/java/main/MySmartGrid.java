@@ -3,15 +3,14 @@ package main;
 import operators.ObtenerConsumoMaximo;
 import energy.Consumo;
 import energy.RedEnergetica;
-
+import grpc.MonitorizacionGrpc;
+import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import io.reactivex.Observable;
-import io.reactivex.schedulers.Schedulers;
-import io.reactivex.functions.Function;
 import io.reactivex.schedulers.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
@@ -20,152 +19,210 @@ import java.util.stream.Collectors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Orquestador principal de la aplicación MySmartGrid.
+ * Coordina la lectura de datos, el lanzamiento de hilos de procesamiento,
+ * el análisis avanzado de datos (RxJava, ForkJoin, Callable) y la comunicación gRPC.
+ */
 public class MySmartGrid {
 
     public static void main(String[] args) {
+        
+        // 1. CONFIGURACIÓN E INICIALIZACIÓN
+        ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 9002)
+            .usePlaintext()
+            .build();
+
+        MonitorizacionGrpc.MonitorizacionBlockingStub stub = MonitorizacionGrpc.newBlockingStub(channel);
+        
         RedEnergetica red = new RedEnergetica(
                 Config.NUM_ZONAS,
                 Config.CAPACIDAD_BATERIA,
-                Config.NIVEL_INICIAL_BATERIA);
+                Config.NIVEL_INICIAL_BATERIA,
+                stub
+            );
 
-        List<Consumo> consumos = null;
-        final List<Consumo>[] consumosWrapper = new List[1];
+        List<Consumo> consumos = inicializarConsumos(red, stub);
 
+        // 2. SINCRONIZACIÓN: ESPERA A LA FINALIZACIÓN DE TRÁMITES LOCALES
+        // Esto garantiza que los 50 trámites se impriman ANTES que el análisis.
+        red.esperarTrabajosLocales();
+
+        // 3. ANÁLISIS AVANZADO DE DATOS (RxJava, Callable, ForkJoin)
+        ejecutarAnalisisAvanzado(consumos);
+
+        // 4. AUDITORÍA FINAL Y FILTROS
+        red.imprimeAuditoria();
+        mostrarFiltrosYEstadisticas(consumos);
+
+        // 5. RESPUESTAS DEL SERVIDOR gRPC
+        // Se imprimen al final absoluto para evitar que se mezclen con la auditoría.
+        System.out.println("\n--- FASE 4: RESPUESTAS gRPC ---");
+        red.imprimirRespuestasGrpc();
+
+        // Cierre limpio del canal de comunicación
+        channel.shutdown();
+    }
+
+    /**
+     * Carga los consumos y arranca los hilos de procesamiento según el modo configurado.
+     */
+    private static List<Consumo> inicializarConsumos(RedEnergetica red, MonitorizacionGrpc.MonitorizacionBlockingStub stub) {
+        List<Consumo> listaConsumos = new ArrayList<>();
+        
+        System.out.println("--- FASE 1: PROCESAMIENTO DE TRÁMITES LOCALES ---");
+        
         switch (Config.MODO_EJECUCION) {
             case 0:
-                consumos = Consumo.consumosDesdeFichero(Config.FICHERO_CONSUMOS);
-                System.out.println("Leidos " + consumos.size() + " consumos desde " + Config.FICHERO_CONSUMOS);
-
-                List<Thread> lThread = new ArrayList<>();
-
-                for (Consumo c : consumos) {
-                    ProcesarConsumo pc = new ProcesarConsumo(red, c);
-                    Thread t = new Thread(pc);
-                    lThread.add(t);
-                    t.start();
-                }
-
-                for (Thread t : lThread) {
-                    try {
-                        t.join();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
+                System.out.println("Modo Observables:");
+                listaConsumos = Consumo.consumosDesdeFichero(Config.FICHERO_CONSUMOS);
+                System.out.println("Leidos " + listaConsumos.size() + " consumos. Iniciando hilos...");
+                ejecutarModoHilosDirectos(red, listaConsumos);
                 break;
 
             case 1:
-                System.out.println("Modo Observable:");
-                consumosWrapper[0] = new ArrayList<>();
-                consumos = consumosWrapper[0];
-                List<Thread> lThreadObs = new ArrayList<>();
-                Consumo.consumosDesdeFicheroObservable(Config.FICHERO_CONSUMOS)
-                        .subscribeOn(Schedulers.io())
-                        .observeOn(Schedulers.computation())
-                        .flatMap(c -> {
-                            consumosWrapper[0].add(c);
-                            Thread t = new Thread(new ProcesarConsumo(red, c));
-                            lThreadObs.add(t);
-                            t.start();
-                            return Observable.just(c);
-                        })
-                        .blockingSubscribe();
+                System.out.println("Modo Observables:");
+                listaConsumos = ejecutarModoObservable(red);
+                break;
 
-                for (Thread t : lThreadObs) {
-                    try {
-                        t.join();
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
             case 2:
                 int nucleos = Runtime.getRuntime().availableProcessors();
-                System.out.println("Modo Executor con " + nucleos + " nucleos disponibles");
-
-                ExecutorService executor = Executors.newFixedThreadPool(nucleos);
-
-                consumos = Consumo.consumosDesdeFichero(Config.FICHERO_CONSUMOS);
-                System.out.println("Leidos " + consumos.size() + " consumos desde " + Config.FICHERO_CONSUMOS);
-
-                for (Consumo c : consumos) {
-                    executor.submit(new ProcesarConsumo(red, c));
-                }
-
-                executor.shutdown();
-                
-                try {
-                    executor.awaitTermination(1, TimeUnit.HOURS);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
+                System.out.println("Modo Executor con " + nucleos + " nucleos.");
+                listaConsumos = Consumo.consumosDesdeFichero(Config.FICHERO_CONSUMOS);
+                ejecutarModoExecutor(red, listaConsumos, nucleos);
                 break;
         }
+        return listaConsumos;
+    }
 
-        // BLOQUE 20 KWH
-        Observable<Consumo> consumoObservable = Observable.fromIterable(consumos)
-                .subscribeOn(Schedulers.computation());
+    private static void ejecutarModoHilosDirectos(RedEnergetica red, List<Consumo> consumos) {
+        List<Thread> hilos = new ArrayList<>();
+        for (Consumo c : consumos) {
+            Thread t = new Thread(new ProcesarConsumo(red, c));
+            hilos.add(t);
+            t.start();
+            pausaEscalonada(20);
+        }
+        esperarHilos(hilos);
+    }
 
-        consumoObservable.reduce(0.0, (acc, c) -> acc + c.getTotalKWh())
-                .subscribe(total -> System.out
-                        .println("[Thread " + Thread.currentThread().getName() + "] Suma total: " + total + " kWh"));
+    private static List<Consumo> ejecutarModoObservable(RedEnergetica red) {
+        List<Consumo> lista = new ArrayList<>();
+        List<Thread> hilos = new ArrayList<>();
+        
+        Consumo.consumosDesdeFicheroObservable(Config.FICHERO_CONSUMOS)
+            .subscribeOn(Schedulers.io())
+            .observeOn(Schedulers.computation())
+            .flatMap(c -> {
+                lista.add(c);
+                Thread t = new Thread(new ProcesarConsumo(red, c));
+                hilos.add(t);
+                t.start();
+                pausaEscalonada(20);
+                return Observable.just(c);
+            })
+            .blockingSubscribe();
 
-        consumoObservable.filter(c -> c.getTotalKWh() > 20.0)
-                .subscribe(c -> System.out.println("[Thread " + Thread.currentThread().getName() + "] Consumo > 20kWh: "
-                        + c.getIdConsumo() + " = " + c.getTotalKWh() + " kWh"));
-        // BLOQUE 20 KWH
+        esperarHilos(hilos);
+        return lista;
+    }
 
-        // Obtener consumo máximo usando Callable
-        ExecutorService maxExecutor = Executors.newSingleThreadExecutor();
+    private static void ejecutarModoExecutor(RedEnergetica red, List<Consumo> consumos, int nucleos) {
+        ExecutorService executor = Executors.newFixedThreadPool(nucleos);
+        for (Consumo c : consumos) {
+            executor.submit(new ProcesarConsumo(red, c));
+            pausaEscalonada(20);
+        }
+        executor.shutdown();
         try {
-            Future<Consumo> futureMax = maxExecutor.submit(new ObtenerConsumoMaximo(consumos));
-            Consumo max = futureMax.get();
+            executor.awaitTermination(1, TimeUnit.HOURS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    /**
+     * Ejecuta las tres técnicas de procesamiento avanzado solicitadas.
+     */
+    private static void ejecutarAnalisisAvanzado(List<Consumo> consumos) {
+        System.out.println("\n--- FASE 2: ANÁLISIS AVANZADO DE DATOS ---");
+
+        // A. CALLABLE: Obtener el consumo máximo
+        ejecutarAnalisisCallable(consumos);
+
+        // B. FORK-JOIN: Filtrado de consumos pesados (>20kWh)
+        ejecutarAnalisisForkJoin(consumos);
+    }
+
+    private static void ejecutarAnalisisCallable(List<Consumo> consumos) {
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<Consumo> future = executor.submit(new ObtenerConsumoMaximo(consumos));
+            Consumo max = future.get();
             if (max != null) {
-                System.out.println("Consumo mas alto detectado (Callable): ID=" + max.getIdConsumo() + 
-                                   ", Cantidad=" + max.getTotalKWh() + " kWh");
+                System.out.println("Resultado Callable -> Consumo mas alto: " + max.getIdConsumo() + 
+                                   " (" + max.getTotalKWh() + " kWh)");
             }
         } catch (Exception e) {
-            System.err.println("Error al obtener el consumo maximo: " + e.getMessage());
+            System.err.println("Error en Callable: " + e.getMessage());
         } finally {
-            maxExecutor.shutdown();
+            executor.shutdown();
         }
+    }
 
-        // BLOQUE FORKJOIN (Filtro > 20 kWh) - Apartado D
-        ForkJoinPool poolFJ = new ForkJoinPool();
-        List<Consumo> filtradosFJ = poolFJ.invoke(new TareaFiltrado(consumos));
-        System.out.println("--- Consumos > 20kWh encontrados con ForkJoin (" + filtradosFJ.size() + ") ---");
-        filtradosFJ.forEach(c -> System.out.println("ID: " + c.getIdConsumo() + " | " + c.getTotalKWh() + " kWh"));
+    private static void ejecutarAnalisisForkJoin(List<Consumo> consumos) {
+        ForkJoinPool pool = new ForkJoinPool();
+        List<Consumo> filtrados = pool.invoke(new TareaFiltrado(consumos));
+        System.out.println("Resultado ForkJoin -> Consumos > 20kWh encontrados: " + filtrados.size());
+        for (Consumo c : filtrados) {
+            System.out.println(" - ID: " + c.getIdConsumo() + " | " + c.getTotalKWh() + " kWh");
+        }
+    }
 
-        red.imprimeAuditoria();
-
-        System.out.println("Consumo de Kwh < 5");
-        consumos.parallelStream().filter(c -> c.getTotalKWh() < 5.0).map(Consumo::getIdConsumo)
+    /**
+     * Muestra filtros adicionales y comprobación de direcciones.
+     */
+    private static void mostrarFiltrosYEstadisticas(List<Consumo> consumos) {
+        System.out.println("\n--- FASE 3: FILTROS Y BÚSQUEDAS ---");
+        
+        System.out.println("Consumos menores a 5 kWh:");
+        consumos.parallelStream()
+                .filter(c -> c.getTotalKWh() < 5.0)
+                .map(Consumo::getIdConsumo)
                 .forEach(System.out::println);
 
-        double maxC = consumos.parallelStream().mapToDouble(Consumo::getTotalKWh).max().orElse(0.0);
-        System.out.println("Consumo máximo: " + maxC);
+        double max = consumos.parallelStream()
+                            .mapToDouble(Consumo::getTotalKWh)
+                            .max().orElse(0.0);
+        System.out.println("Consumo maximo global: " + max + " kWh");
 
-        String direccion1 = "Sagitario, 24";
-        boolean encontrado1 = consumos.parallelStream().anyMatch(c -> c.getDireccion().equals(direccion1));
+        comprobarDireccion(consumos, "Sagitario, 24");
+        comprobarDireccion(consumos, "Berna, 11");
+    }
 
-        String direccion2 = "Berna, 11";
-        boolean encontrado2 = consumos.parallelStream().anyMatch(c -> c.getDireccion().equals(direccion2));
-
-        if (encontrado1) {
-            System.out.println("Direccion Encontrada");
+    private static void comprobarDireccion(List<Consumo> consumos, String direccion) {
+        boolean existe = consumos.parallelStream().anyMatch(c -> c.getDireccion().equals(direccion));
+        if (existe) {
+            System.out.println("Direccion Encontrada: " + direccion);
         } else {
-            System.out.println("Direccion NO encontrada");
+            System.out.println("Direccion NO encontrada: " + direccion);
         }
+    }
 
-        if (encontrado2) {
-            System.out.println("Direccion Encontrada");
-        } else {
-            System.out.println("Direccion NO encontrada");
+    // --- MÉTODOS AUXILIARES ---
+
+    private static void pausaEscalonada(int ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    private static void esperarHilos(List<Thread> hilos) {
+        for (Thread t : hilos) {
+            try { t.join(); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
     }
 
     /**
      * Tarea ForkJoin recursiva para filtrar consumos pesados (>20kWh).
-     * El caso trivial ocurre cuando la lista tiene menos de 10 elementos.
      */
     static class TareaFiltrado extends RecursiveTask<List<Consumo>> {
         private final List<Consumo> lista;
@@ -177,13 +234,11 @@ public class MySmartGrid {
         @Override
         protected List<Consumo> compute() {
             if (lista.size() < 10) {
-                // Caso trivial: Menos de 10 consumos
                 return lista.stream()
                         .filter(c -> c.getTotalKWh() > 20.0)
                         .collect(Collectors.toList());
             }
 
-            // Caso recursivo: Dividir y vencer
             int mid = lista.size() / 2;
             TareaFiltrado t1 = new TareaFiltrado(lista.subList(0, mid));
             TareaFiltrado t2 = new TareaFiltrado(lista.subList(mid, lista.size()));
