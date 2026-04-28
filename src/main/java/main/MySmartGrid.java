@@ -4,8 +4,14 @@ import operators.ObtenerConsumoMaximo;
 import energy.Consumo;
 import energy.RedEnergetica;
 import grpc.MonitorizacionGrpc;
+import grpc.PreciosGrpc;
+import grpc.PreciosProto;
+import grpc.PreciosProto.DemandaRequest;
+import grpc.PreciosProto.PreciosReply;
+import grpc.PreciosProto.PreciosRequest;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.stub.StreamObserver;
 import io.reactivex.Observable;
 import io.reactivex.schedulers.Schedulers;
 
@@ -29,11 +35,11 @@ public class MySmartGrid {
     public static void main(String[] args) {
         
         // 1. CONFIGURACIÓN E INICIALIZACIÓN
-        ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 9002)
+        ManagedChannel channelMonitrizacion = ManagedChannelBuilder.forAddress("localhost", 9002)
             .usePlaintext()
             .build();
 
-        MonitorizacionGrpc.MonitorizacionBlockingStub stub = MonitorizacionGrpc.newBlockingStub(channel);
+        MonitorizacionGrpc.MonitorizacionBlockingStub stub = MonitorizacionGrpc.newBlockingStub(channelMonitrizacion);
         
         RedEnergetica red = new RedEnergetica(
                 Config.NUM_ZONAS,
@@ -57,11 +63,71 @@ public class MySmartGrid {
 
         // 5. RESPUESTAS DEL SERVIDOR gRPC
         // Se imprimen al final absoluto para evitar que se mezclen con la auditoría.
-        System.out.println("\n--- FASE 4: RESPUESTAS gRPC ---");
+        System.out.println("\n--- FASE 4: RESPUESTAS gRPC (UNARY - anotarConsumo()) ---");
         red.imprimirRespuestasGrpc();
 
-        // Cierre limpio del canal de comunicación
-        channel.shutdown();
+        // 6. BIDIRECCIONAL - PreciosSerice
+        System.out.println("\n--- FASE 5: CÁLCULO DE PRECIOS (BIDIRECCIONAL - calcularPrecios()) ---");
+        ManagedChannel channelPrecios = ManagedChannelBuilder.forAddress("localhost", 9004)
+            .usePlaintext()
+            .build();
+
+        PreciosGrpc.PreciosStub asynPreciosStub = PreciosGrpc.newStub(channelPrecios);
+        
+        StreamObserver<PreciosReply> responsePreciosObserver = new StreamObserver<PreciosProto.PreciosReply>() {
+            @Override
+            public void onNext(PreciosReply reply) {
+                // Se ejecuta cada vez que el servidor calcula un precio
+                System.out.println("[gRPC Price] ID: " + reply.getIdConsumo() + " | Precio Total: " + String.format("%.2f", reply.getPrecio()) + "EUR");
+            }
+            @Override
+            public void onError(Throwable t) {
+                System.out.println("Servidor de Precios no disponible en el puerto 9004");
+                System.out.println("Error en el servicio de precios: " + t.getMessage());
+            }
+            @Override
+            public void onCompleted() {
+                System.out.println("--- Todos los precios han sido calculados con éxito ---");
+            }
+        };
+
+        // Iniciamos la conexión bidireccional
+        StreamObserver<PreciosRequest> requestObserver = asynPreciosStub.calcularPrecios(responsePreciosObserver);
+
+        try {
+            for (Consumo c : consumos) {
+                // Construcción manual para evitar colisiones de tipos entre Protos
+                PreciosRequest request = PreciosRequest.newBuilder()
+                    .setIdConsumo(c.getIdConsumo())
+                    .setIdZona(c.getZona())
+                    .addAllDemandas(c.getDemandas().stream().map(d -> 
+                        grpc.PreciosProto.DemandaRequest.newBuilder()
+                            .setIdTipo(d.getIdTipo().toString())
+                            .setKWh(d.getKWh())
+                            .build()
+                    ).collect(Collectors.toList()))
+                    .build();
+                
+                requestObserver.onNext(request);
+            }
+            
+            // Avisamos que no hay más datos
+            requestObserver.onCompleted();
+            
+            // Esperamos un máximo de 5 segundos a que lleguen las respuestas
+            try {
+                Thread.sleep(2000);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } catch (Exception e) {
+            System.err.println("Error al enviar solicitudes de precios: " + e.getMessage());
+        }
+        
+
+        // Cierre de los canales de comunicación
+        channelMonitrizacion.shutdown();
+        channelPrecios.shutdown();
     }
 
     /**
